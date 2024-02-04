@@ -1,0 +1,7 @@
+# Fetch Google
+GET https://google.com
+Language: en
+
+MATCH
+status: code: 200
+body: string
