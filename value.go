@@ -17,10 +17,6 @@ func (sv SetValue) Run(state *State) error {
 	return nil
 }
 
-func ParseSetValue(line string, _ *bufio.Reader) (Command, int, error) {
-	return SetValue(line), 0, nil
-}
-
 type MatchValue string
 
 func (mv MatchValue) Run(state *State) error {
@@ -36,9 +32,14 @@ func (mv MatchValue) Run(state *State) error {
 	return nil
 }
 
-func ParseMatchValue(prefix string, in *bufio.Reader) (Command, int, error) {
+type ValueCommand interface {
+	Command
+	~string
+}
+
+func ParseValueCmd[T ValueCommand](prefix string, in *bufio.Reader) (Command, int, error) {
 	if !strings.HasPrefix(prefix, "^") {
-		return MatchValue(prefix), 0, nil
+		return T(prefix), 0, nil
 	}
 
 	var (
@@ -63,5 +64,5 @@ func ParseMatchValue(prefix string, in *bufio.Reader) (Command, int, error) {
 			break
 		}
 	}
-	return MatchValue(buffer.String()), lc, nil
+	return T(buffer.String()), lc, nil
 }

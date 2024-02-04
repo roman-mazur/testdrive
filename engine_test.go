@@ -28,8 +28,8 @@ END
 	logger := log.New(os.Stdout, "", 0)
 	engine := testdrive.Engine{
 		Parsers: map[string]testdrive.Parser{
-			"VALUE": testdrive.ParseSetValue,
-			"MATCH": testdrive.ParseMatchValue,
+			"VALUE": testdrive.ParseValueCmd[testdrive.SetValue],
+			"MATCH": testdrive.ParseValueCmd[testdrive.MatchValue],
 		},
 		Log: logger.Printf,
 	}
