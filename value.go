@@ -6,32 +6,6 @@ import (
 	"strings"
 )
 
-type SetValue string
-
-func (sv SetValue) Run(state *State) error {
-	val, err := state.CompileValue(string(sv))
-	if err != nil {
-		return err
-	}
-	state.SetValue(val)
-	return nil
-}
-
-type MatchValue string
-
-func (mv MatchValue) Run(state *State) error {
-	val, err := state.CompileValue(string(mv))
-	if err != nil {
-		return err
-	}
-	newValue, err := state.UnifyValue(val)
-	if err != nil {
-		return err
-	}
-	state.SetValue(newValue)
-	return nil
-}
-
 type ValueCommand interface {
 	Command
 	~string
@@ -65,4 +39,30 @@ func ParseValueCmd[T ValueCommand](prefix string, in *bufio.Reader) (Command, in
 		}
 	}
 	return T(buffer.String()), lc, nil
+}
+
+type setValue string
+
+func (sv setValue) Run(state *State) error {
+	val, err := state.CompileValue(string(sv))
+	if err != nil {
+		return err
+	}
+	state.SetValue(val)
+	return nil
+}
+
+type matchValue string
+
+func (mv matchValue) Run(state *State) error {
+	val, err := state.CompileValue(string(mv))
+	if err != nil {
+		return err
+	}
+	newValue, err := state.UnifyValue(val)
+	if err != nil {
+		return err
+	}
+	state.SetValue(newValue)
+	return nil
 }

@@ -1,7 +1,7 @@
 # Fetch Google
-GET https://google.com
-Language: en
+HTTP GET https://google.com
 
-MATCH
+MATCH ^END
 status: code: 200
 body: string
+END

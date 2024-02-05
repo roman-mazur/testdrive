@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 
 	"cuelang.org/go/cue"
@@ -13,9 +14,17 @@ import (
 
 // Engine keeps configuration for executing a script.
 type Engine struct {
-	Parsers map[string]Parser
+	Parsers    map[string]Parser
+	Log        func(fmt string, args ...any)
+	HttpClient *http.Client
+}
 
-	Log func(fmt string, args ...any)
+func DefaultParsers() map[string]Parser {
+	return map[string]Parser{
+		"VALUE": ParseValueCmd[setValue],
+		"MATCH": ParseValueCmd[matchValue],
+		"HTTP":  ParseHTTP,
+	}
 }
 
 // Parse parses the input script forming a slice of Section that can be executed via a dedicated method of the Engine.
@@ -96,6 +105,11 @@ func (e *Engine) Parse(srcName string, input io.Reader) (result []Section, err e
 // Commands are executed one at a time. This function exits when the execution stops.
 // If a Command fails, subsequent commands are not executed or parsed.
 func (e *Engine) Execute(state *State, sections []Section) error {
+	state.engine = e
+	defer func() {
+		state.engine = nil
+	}()
+
 	for _, sec := range sections {
 		e.log("Executing section \"%s\"", sec.Name)
 		for _, cmdPos := range sec.Commands {
@@ -144,6 +158,7 @@ type Parser func(line string, reader *bufio.Reader) (cmd Command, lines int, err
 type State struct {
 	context.Context
 
+	engine *Engine
 	cueCtx *cue.Context
 
 	srcName string // name of the current source (e.g. file name)

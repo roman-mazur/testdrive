@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
+	"testing"
 
 	"rmazur.io/testdrive"
 )
@@ -25,13 +27,9 @@ END
 	defer cancel()
 	state := testdrive.NewState(ctx)
 
-	logger := log.New(os.Stdout, "", 0)
 	engine := testdrive.Engine{
-		Parsers: map[string]testdrive.Parser{
-			"VALUE": testdrive.ParseValueCmd[testdrive.SetValue],
-			"MATCH": testdrive.ParseValueCmd[testdrive.MatchValue],
-		},
-		Log: logger.Printf,
+		Parsers: testdrive.DefaultParsers(),
+		Log:     log.New(os.Stdout, "", 0).Printf,
 	}
 
 	sections, err := engine.Parse("example", strings.NewReader(script))
@@ -49,4 +47,41 @@ END
 	// {
 	//	foo: "bar"
 	// }
+}
+
+func TestEngine(t *testing.T) {
+	entries, err := os.ReadDir("testdata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scriptEntry := range entries {
+		name := scriptEntry.Name()
+		if !strings.HasSuffix(name, ".testdrive") {
+			continue
+		}
+		t.Run(name, func(t *testing.T) {
+			src, err := os.Open(filepath.Join("testdata", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				_ = src.Close()
+			})
+
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+
+			engine := testdrive.Engine{
+				Parsers: testdrive.DefaultParsers(),
+				Log:     t.Logf,
+			}
+			sections, err := engine.Parse(name, src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := engine.Execute(testdrive.NewState(ctx), sections); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
