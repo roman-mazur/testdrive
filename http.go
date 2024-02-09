@@ -2,26 +2,62 @@ package testdrive
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
+var httpSyntaxError = fmt.Errorf("expected [^<END>] <VERB> <URL>")
+
 func ParseHTTP(prefix string, in *bufio.Reader) (Command, int, error) {
 	parts := strings.Fields(prefix)
-	if len(parts) != 2 {
-		return nil, 0, fmt.Errorf("expected <VERB> <URL>")
+
+	var end, verb, urlString string
+	switch {
+	case len(parts) == 3 && strings.HasPrefix(parts[0], "^"):
+		end, verb, urlString = parts[0][1:], parts[1], parts[2]
+	case len(parts) == 2:
+		verb, urlString = parts[0], parts[1]
+	default:
+		return nil, 0, httpSyntaxError
 	}
-	verb, urlString := parts[0], parts[1]
 
 	req, err := http.NewRequest(verb, urlString, nil)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// TODO: Parse header/body.
+	var (
+		headers []string
+		body    bytes.Buffer
+	)
+	headersFinished := false
+	lc, err := readLines(in, end, func(line string) {
+		if line == "" {
+			headersFinished = true
+			return
+		}
+		if headersFinished {
+			body.WriteString(line)
+			body.WriteByte('\n')
+		} else {
+			headers = append(headers, line)
+		}
+	})
+	if err != nil {
+		return nil, lc, err
+	}
+
+	req.Body = io.NopCloser(&body)
+	for _, headerLine := range headers {
+		parts := strings.SplitN(headerLine, " ", 2)
+		name, value := strings.TrimSuffix(parts[0], ":"), parts[1]
+		req.Header.Set(name, value)
+	}
 	return &httpCommand{r: req}, 0, nil
 }
 
@@ -30,11 +66,21 @@ type httpCommand struct {
 }
 
 func (hc *httpCommand) Run(state *State) error {
-	client := state.engine.HttpClient
+	client := state.engine.httpClient
 	if client == nil {
 		client = http.DefaultClient
 	}
-	resp, err := client.Do(hc.r.Clone(state.Context))
+
+	req := hc.r.Clone(state.Context)
+	if state.engine.baseURL != "" && req.URL.Scheme == "" {
+		var urlError error
+		req.URL, urlError = url.Parse(state.engine.baseURL + req.URL.String())
+		if urlError != nil {
+			return urlError
+		}
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -60,7 +106,7 @@ func (hc *httpCommand) Run(state *State) error {
 	if err := val.Err(); err != nil {
 		return err
 	}
-	state.SetValue(val)
+	state.PushValue(val)
 	return nil
 }
 

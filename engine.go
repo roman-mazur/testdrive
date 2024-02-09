@@ -14,17 +14,61 @@ import (
 
 // Engine keeps configuration for executing a script.
 type Engine struct {
-	Parsers    map[string]Parser
-	Log        func(fmt string, args ...any)
-	HttpClient *http.Client
+	parsers map[string]Parser
+	logf    func(fmt string, args ...any)
+
+	httpClient     *http.Client
+	baseURL        string
+	reqInterceptor func(req *http.Request)
 }
 
-func DefaultParsers() map[string]Parser {
-	return map[string]Parser{
-		"VALUE": ParseValueCmd[setValue],
-		"MATCH": ParseValueCmd[matchValue],
-		"HTTP":  ParseHTTP,
+type option func(*Engine)
+
+// Configure applies the provided configuration options.
+func (e *Engine) Configure(opts ...option) {
+	for _, opt := range opts {
+		opt(e)
 	}
+}
+
+var defaultParsers = map[string]Parser{
+	"VALUE": parseValueCmd[setValue],
+	"MATCH": parseValueCmd[matchValue],
+}
+
+func WithParsers(p map[string]Parser) option {
+	return func(engine *Engine) {
+		parsers := make(map[string]Parser, len(p)+len(defaultParsers))
+		for name, parser := range p {
+			parsers[name] = parser
+		}
+		for name, parser := range defaultParsers {
+			parsers[name] = parser
+		}
+		engine.parsers = parsers
+	}
+}
+
+func WithCommonParsers() option {
+	return WithParsers(map[string]Parser{
+		"HTTP": ParseHTTP,
+	})
+}
+
+func WithLog(log func(fmt string, args ...any)) option {
+	return func(engine *Engine) { engine.logf = log }
+}
+
+func WithHTTPClient(hc *http.Client) option {
+	return func(engine *Engine) { engine.httpClient = hc }
+}
+
+func WithBaseURL(url string) option {
+	return func(engine *Engine) { engine.baseURL = url }
+}
+
+func WithRequestInterceptor(f func(*http.Request)) option {
+	return func(engine *Engine) { engine.reqInterceptor = f }
 }
 
 // Parse parses the input script forming a slice of Section that can be executed via a dedicated method of the Engine.
@@ -38,9 +82,13 @@ func (e *Engine) Parse(srcName string, input io.Reader) (result []Section, err e
 	)
 
 	flush := func() {
-		firstSection = false
 		result = append(result, section)
 		section = Section{}
+	}
+
+	parsers := e.parsers
+	if parsers == nil {
+		parsers = defaultParsers
 	}
 
 	for {
@@ -73,10 +121,11 @@ func (e *Engine) Parse(srcName string, input io.Reader) (result []Section, err e
 			}
 			section.Name = strings.TrimSpace(line[2:])
 			section.Lineno = lineno
+			firstSection = false
 
 		default:
 			// Command.
-			parser, exists := e.Parsers[prefix]
+			parser, exists := parsers[prefix]
 			if !exists {
 				err = fmt.Errorf("unknown command %s at line %d", prefix, lineno)
 				return
@@ -119,14 +168,14 @@ func (e *Engine) Execute(state *State, sections []Section) error {
 				return err
 			}
 		}
-		e.Log("%s", state.val)
+		e.logf("%s", state.values[len(state.values)-1])
 	}
 	return nil
 }
 
 func (e *Engine) log(fmt string, args ...any) {
-	if e.Log != nil {
-		e.Log(fmt, args...)
+	if e.logf != nil {
+		e.logf(fmt, args...)
 	}
 }
 
@@ -164,8 +213,8 @@ type State struct {
 	srcName string // name of the current source (e.g. file name)
 	lineno  int    // line number in the current source
 
-	err error     // error from the last command
-	val cue.Value // value from the last command
+	err    error       // error from the last command
+	values []cue.Value // last 10 values
 }
 
 func NewState(ctx context.Context) *State {
@@ -176,15 +225,39 @@ func NewState(ctx context.Context) *State {
 }
 
 func (s *State) Location() (source string, lineno int) { return s.srcName, s.lineno }
-func (s *State) SetValue(val cue.Value)                { s.val = val }
 func (s *State) LastError() error                      { return s.err }
 
+func (s *State) PushValue(val cue.Value) {
+	s.values = append(s.values, val)
+	if len(s.values) > 10 {
+		s.values = s.values[:10]
+	}
+}
+
 func (s *State) CompileValue(str string) (cue.Value, error) {
-	val := s.cueCtx.CompileString(str, cue.Filename(s.srcName))
+	history := make([]cue.Value, len(s.values))
+	for i := range s.values {
+		history[len(s.values)-1-i] = s.values[i]
+	}
+	var lastValue cue.Value
+	if len(s.values) > 0 {
+		lastValue = s.values[0]
+	}
+	refs := scope{
+		LastValue: lastValue,
+		History:   history,
+	}
+	val := s.cueCtx.CompileString(str, cue.Filename(s.srcName), cue.Scope(s.cueCtx.Encode(refs)))
 	return val, val.Err()
 }
 
 func (s *State) UnifyValue(val cue.Value) (cue.Value, error) {
-	v := s.val.Unify(val)
+	last := s.values[len(s.values)-1]
+	v := last.Unify(val)
 	return v, v.Err()
+}
+
+type scope struct {
+	LastValue cue.Value   `json:"$"`
+	History   []cue.Value `json:"$history"`
 }

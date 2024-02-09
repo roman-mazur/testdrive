@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"rmazur.io/testdrive"
+	"rmazur.io/testdrive/internal/testserver"
 )
 
 func ExampleEngine() {
@@ -27,10 +29,8 @@ END
 	defer cancel()
 	state := testdrive.NewState(ctx)
 
-	engine := testdrive.Engine{
-		Parsers: testdrive.DefaultParsers(),
-		Log:     log.New(os.Stdout, "", 0).Printf,
-	}
+	var engine testdrive.Engine
+	engine.Configure(testdrive.WithLog(log.New(os.Stdout, "", 0).Printf))
 
 	sections, err := engine.Parse("example", strings.NewReader(script))
 	if err != nil {
@@ -54,6 +54,9 @@ func TestEngine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	srv := httptest.NewServer(testserver.CreateHandler())
+	t.Cleanup(srv.Close)
+
 	for _, scriptEntry := range entries {
 		name := scriptEntry.Name()
 		if !strings.HasSuffix(name, ".testdrive") {
@@ -71,16 +74,15 @@ func TestEngine(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			t.Cleanup(cancel)
 
-			engine := testdrive.Engine{
-				Parsers: testdrive.DefaultParsers(),
-				Log:     t.Logf,
-			}
+			var engine testdrive.Engine
+			engine.Configure(testdrive.WithCommonParsers(), testdrive.WithLog(t.Logf), testdrive.WithBaseURL(srv.URL))
+
 			sections, err := engine.Parse(name, src)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if err := engine.Execute(testdrive.NewState(ctx), sections); err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 		})
 	}

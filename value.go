@@ -2,41 +2,27 @@ package testdrive
 
 import (
 	"bufio"
-	"io"
 	"strings"
 )
 
-type ValueCommand interface {
+type valueCommand interface {
 	Command
 	~string
 }
 
-func ParseValueCmd[T ValueCommand](prefix string, in *bufio.Reader) (Command, int, error) {
+func parseValueCmd[T valueCommand](prefix string, in *bufio.Reader) (Command, int, error) {
 	if !strings.HasPrefix(prefix, "^") {
 		return T(prefix), 0, nil
 	}
 
-	var (
-		lc     int
-		end    = prefix[1:]
-		buffer strings.Builder
-	)
-
-	for {
-		line, err := in.ReadString('\n')
-		if err != nil && err != io.EOF {
-			return nil, lc, err
-		}
-		lc++
-		line = strings.TrimSpace(line)
-		if line == end {
-			break
-		}
+	var buffer strings.Builder
+	lc, err := readLines(in, prefix[1:], func(line string) {
 		buffer.WriteString(line)
 		buffer.WriteString("\n")
-		if err == io.EOF {
-			break
-		}
+	})
+
+	if err != nil {
+		return nil, lc, err
 	}
 	return T(buffer.String()), lc, nil
 }
@@ -48,7 +34,7 @@ func (sv setValue) Run(state *State) error {
 	if err != nil {
 		return err
 	}
-	state.SetValue(val)
+	state.PushValue(val)
 	return nil
 }
 
@@ -63,6 +49,6 @@ func (mv matchValue) Run(state *State) error {
 	if err != nil {
 		return err
 	}
-	state.SetValue(newValue)
+	state.PushValue(newValue)
 	return nil
 }

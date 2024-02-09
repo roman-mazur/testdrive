@@ -1,0 +1,28 @@
+# Fetch some JSON data.
+HTTP GET /time
+
+MATCH body: now: string
+
+# Use an echo endpoint.
+HTTP ^END POST /echo
+Content-Type: application/json
+
+{"ts":"$.body.now","n":21,"foo":"bar"}
+END
+
+MATCH ^END
+status: code: 200
+body: {
+    ts: $history[1].body.now
+    n: 21.0
+    foo: "bar"
+}
+END
+
+# Check how non-JSON is matched
+HTTP ^TEXT_END POST /echo
+
+some text $.n
+TEX_TEND
+
+MATCH body: "some text 21"

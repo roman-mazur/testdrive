@@ -3,5 +3,6 @@ HTTP GET https://google.com
 
 MATCH ^END
 status: code: 200
-body: string
+headers: [string]: [...string]
+body: =~"Google"
 END
