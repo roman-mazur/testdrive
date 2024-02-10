@@ -234,20 +234,24 @@ func (s *State) PushValue(val cue.Value) {
 	}
 }
 
-func (s *State) CompileValue(str string) (cue.Value, error) {
+func (s *State) cueOptions() []cue.BuildOption {
 	history := make([]cue.Value, len(s.values))
 	for i := range s.values {
 		history[len(s.values)-1-i] = s.values[i]
 	}
-	var lastValue cue.Value
+	var lastValue *cue.Value
 	if len(s.values) > 0 {
-		lastValue = s.values[0]
+		lastValue = &history[0]
 	}
 	refs := scope{
 		LastValue: lastValue,
 		History:   history,
 	}
-	val := s.cueCtx.CompileString(str, cue.Filename(s.srcName), cue.Scope(s.cueCtx.Encode(refs)))
+	return []cue.BuildOption{cue.Filename(s.srcName), cue.Scope(s.cueCtx.Encode(refs))}
+}
+
+func (s *State) CompileValue(str string) (cue.Value, error) {
+	val := s.cueCtx.CompileString(str, s.cueOptions()...)
 	return val, val.Err()
 }
 
@@ -257,7 +261,58 @@ func (s *State) UnifyValue(val cue.Value) (cue.Value, error) {
 	return v, v.Err()
 }
 
+func (s *State) Expand(str string) (string, error) {
+	var (
+		res                    strings.Builder
+		startEscape, startExpr bool
+		partIndex, exprIndex   int
+	)
+	for i := range str {
+		switch str[i] {
+		case '\\':
+			if startEscape {
+				startEscape = false
+				res.WriteString(str[partIndex:i])
+				partIndex = i + 1
+			} else {
+				startEscape = true
+			}
+		case '(':
+			if startEscape {
+				startEscape = false
+				startExpr = true
+				exprIndex = i + 1
+				res.WriteString(str[partIndex : i-1])
+				partIndex = i - 1
+			}
+		case ')':
+			if startEscape {
+				return "", fmt.Errorf("invalid escape sequence at position %d (%s)", i, str[i:i+1])
+			}
+			if startExpr {
+				startExpr = false
+				expr := str[exprIndex:i]
+				val, err := s.CompileValue(expr)
+				if err != nil {
+					return "", fmt.Errorf("cannot evaluate expression %s at position %d: %s", expr, exprIndex, err)
+				}
+				_, _ = fmt.Fprintf(&res, "%s", val)
+				partIndex = i + 1
+			}
+		default:
+			if startEscape {
+				return "", fmt.Errorf("invalid escape sequence at position %d (%s)", i, str[i:i+1])
+			}
+		}
+	}
+
+	if partIndex < len(str) {
+		res.WriteString(str[partIndex:])
+	}
+	return res.String(), nil
+}
+
 type scope struct {
-	LastValue cue.Value   `json:"$"`
+	LastValue *cue.Value  `json:"$"`
 	History   []cue.Value `json:"$history"`
 }

@@ -87,3 +87,40 @@ func TestEngine(t *testing.T) {
 		})
 	}
 }
+
+func TestState_Expand(t *testing.T) {
+	state := testdrive.NewState(context.Background())
+	val, err := state.CompileValue("{a:true,n:21,s:\"abc\"}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.PushValue(val)
+
+	for _, tc := range []struct {
+		name string
+		in   string
+		out  string
+		err  string
+	}{
+		{name: "no vars", in: "string", out: "string"},
+		{name: "string", in: "string \\($.s)", out: "string abc"},
+		{name: "int", in: "int \\($.n)", out: "int 21"},
+		{name: "bool", in: "bool \\($.a)", out: "bool true"},
+		{name: "not closed", in: "some \\($.a text", out: "some \\($.a text"},
+		{name: "brackets", in: "some ($.a) text", out: "some ($.a) text"},
+		{name: "string in the middle", in: "some \\($.s) text", out: "some abc text"},
+		{name: "only value", in: "\\($.n)", out: "21"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if res, err := state.Expand(tc.in); err != nil {
+				if err.Error() != tc.err {
+					t.Errorf("unexpected error [%s], wanted [%s]", err, tc.err)
+				}
+			} else if tc.err != "" {
+				t.Errorf("expected error [%s], but got nothing", tc.err)
+			} else if res != tc.out {
+				t.Errorf("unexpected result [%s], wanted [%s]", res, tc.out)
+			}
+		})
+	}
+}

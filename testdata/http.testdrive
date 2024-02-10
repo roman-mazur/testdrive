@@ -7,7 +7,7 @@ MATCH body: now: string
 HTTP ^END POST /echo
 Content-Type: application/json
 
-{"ts":"$.body.now","n":21,"foo":"bar"}
+{"ts":"\($.body.now)","n":21,"foo":"bar"}
 END
 
 MATCH ^END
@@ -22,7 +22,7 @@ END
 # Check how non-JSON is matched
 HTTP ^TEXT_END POST /echo
 
-some text $.n
-TEX_TEND
+some text "\($.status.line)" \($.body.n)
+TEXT_END
 
-MATCH body: "some text 21"
+MATCH body: "some text \"200 OK\" 21.0\n"

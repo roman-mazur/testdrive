@@ -80,6 +80,20 @@ func (hc *httpCommand) Run(state *State) error {
 		}
 	}
 
+	if req.Body != nil {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			panic(err)
+		}
+		if len(body) > 0 {
+			expandedBody, err := state.Expand(string(body))
+			if err != nil {
+				return err
+			}
+			req.Body = io.NopCloser(strings.NewReader(expandedBody))
+		}
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
