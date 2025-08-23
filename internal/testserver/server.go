@@ -9,7 +9,7 @@ import (
 
 func CreateHandler() *http.ServeMux {
 	mux := new(http.ServeMux)
-	mux.HandleFunc("/time", func(rw http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /time", func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("content-type", "application/json")
 		resp := struct {
 			Now time.Time `json:"now"`
