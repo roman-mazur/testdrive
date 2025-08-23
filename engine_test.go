@@ -3,6 +3,7 @@ package testdrive_test
 import (
 	"context"
 	"fmt"
+	"iter"
 	"log"
 	"net/http/httptest"
 	"os"
@@ -50,26 +51,12 @@ END
 }
 
 func TestEngine(t *testing.T) {
-	entries, err := os.ReadDir("testdata")
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := httptest.NewServer(testserver.CreateHandler())
-	t.Cleanup(srv.Close)
+	entries, srv := initScriptsTest(t)
 
-	for _, scriptEntry := range entries {
+	for scriptEntry := range entries {
 		name := scriptEntry.Name()
-		if !strings.HasSuffix(name, ".testdrive") {
-			continue
-		}
 		t.Run(name, func(t *testing.T) {
-			src, err := os.Open(filepath.Join("testdata", name))
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() {
-				_ = src.Close()
-			})
+			src := openTestScript(t, name)
 
 			ctx, cancel := context.WithCancel(context.Background())
 			t.Cleanup(cancel)
@@ -84,6 +71,23 @@ func TestEngine(t *testing.T) {
 			if err := engine.Execute(testdrive.NewState(ctx), sections); err != nil {
 				t.Error(err)
 			}
+		})
+	}
+}
+
+func TestEngine_ExecuteScript(t *testing.T) {
+	entries, srv := initScriptsTest(t)
+	for scriptEntry := range entries {
+		name := scriptEntry.Name()
+		t.Run(name, func(t *testing.T) {
+			var engine testdrive.Engine
+			engine.Configure(testdrive.WithCommonParsers(), testdrive.WithLog(t.Logf), testdrive.WithBaseURL(srv.URL))
+
+			state, err := engine.ExecuteScript(context.Background(), name, openTestScript(t, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Log("last error:", state.LastError())
 		})
 	}
 }
@@ -123,4 +127,36 @@ func TestState_Expand(t *testing.T) {
 			}
 		})
 	}
+}
+
+func initScriptsTest(t *testing.T) (iter.Seq[os.DirEntry], *httptest.Server) {
+	t.Helper()
+	entries, err := os.ReadDir("testdata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(testserver.CreateHandler())
+	t.Cleanup(srv.Close)
+
+	it := func(yield func(entry os.DirEntry) bool) {
+		for _, scriptEntry := range entries {
+			name := scriptEntry.Name()
+			if !strings.HasSuffix(name, ".testdrive") {
+				continue
+			}
+			yield(scriptEntry)
+		}
+	}
+	return it, srv
+}
+
+func openTestScript(t *testing.T, name string) *os.File {
+	src, err := os.Open(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = src.Close()
+	})
+	return src
 }

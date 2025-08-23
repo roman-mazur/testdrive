@@ -168,9 +168,23 @@ func (e *Engine) Execute(state *State, sections []Section) error {
 				return err
 			}
 		}
-		e.logf("%s", state.values[len(state.values)-1])
+		e.log("%s", state.values[len(state.values)-1])
 	}
 	return nil
+}
+
+// ExecuteScript is a helper on top of Parse and Execute to run a specific script easier.
+func (e *Engine) ExecuteScript(ctx context.Context, name string, in io.Reader) (*State, error) {
+	sections, err := e.Parse(name, in)
+	if err != nil {
+		return nil, err
+	}
+	state := NewState(ctx)
+	err = e.Execute(state, sections)
+	if err != nil {
+		return nil, err
+	}
+	return state, nil
 }
 
 func (e *Engine) log(fmt string, args ...any) {
