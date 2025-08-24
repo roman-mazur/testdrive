@@ -13,6 +13,15 @@ import (
 
 var httpSyntaxError = fmt.Errorf("expected [^<END>] <VERB> <URL>")
 
+// ParseHTTP is a parse for HTTP command.
+// The first (that starts with an HTTP prefix) provides a method and a URL.
+// Next lines provide headers.
+// After a blank line, the request body follows.
+// HTTP command produces the following value:
+//
+//	status: { code: int, line: string }
+//	headers: [string]: [...string]
+//	body: _
 func ParseHTTP(prefix string, in *bufio.Reader) (Command, int, error) {
 	parts := strings.Fields(prefix)
 
@@ -124,6 +133,7 @@ func (hc *httpCommand) Run(state *State) error {
 	return nil
 }
 
+// Note that this structure is documented in ParseHTTP.
 type httpCommandResult struct {
 	Status struct {
 		Code int    `json:"code"`
