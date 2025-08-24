@@ -13,6 +13,7 @@ import (
 
 	"rmazur.io/testdrive"
 	"rmazur.io/testdrive/internal/testserver"
+	"rmazur.io/testdrive/tdrive"
 )
 
 func ExampleEngine() {
@@ -76,20 +77,10 @@ func TestEngine(t *testing.T) {
 }
 
 func TestEngine_ExecuteScript(t *testing.T) {
-	entries, srv := initScriptsTest(t)
-	for scriptEntry := range entries {
-		name := scriptEntry.Name()
-		t.Run(name, func(t *testing.T) {
-			var engine testdrive.Engine
-			engine.Configure(testdrive.WithCommonParsers(), testdrive.WithLog(t.Logf), testdrive.WithBaseURL(srv.URL))
-
-			state, err := engine.ExecuteScript(context.Background(), name, openTestScript(t, name))
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Log("last error:", state.LastError())
-		})
-	}
+	_, srv := initScriptsTest(t)
+	tdrive.RunTests(t, context.Background(), "testdata", func(t *testing.T, engine *testdrive.Engine) {
+		engine.Configure(testdrive.WithCommonParsers(), testdrive.WithLog(t.Logf), testdrive.WithBaseURL(srv.URL))
+	})
 }
 
 func TestState_Expand(t *testing.T) {
