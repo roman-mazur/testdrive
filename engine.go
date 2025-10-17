@@ -165,7 +165,7 @@ func (e *Engine) Execute(state *State, sections []Section) error {
 				return err
 			}
 		}
-		e.log("%s", state.values[len(state.values)-1])
+		e.log("%s", state.values[0])
 	}
 	return nil
 }

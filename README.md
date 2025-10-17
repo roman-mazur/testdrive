@@ -1,3 +1,8 @@
+# Test Drive
+
+A script language to run commands and match results using [CUE](https://cuelang.org).
+
+```
 # Fetch Google
 HTTP GET https://google.com
 
@@ -21,3 +26,4 @@ body: close({
     components: _
 })
 END
+```
